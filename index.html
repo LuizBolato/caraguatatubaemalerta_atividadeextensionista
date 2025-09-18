@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caraguatatuba em Alerta</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-top: 20px;
+        }
+        #mapa {
+            height: 80vh;
+            width: 90%;
+            margin: 20px auto;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .legend {
+            background: white;
+            padding: 10px;
+            line-height: 18px;
+            color: #333;
+            border-radius: 5px;
+            font-size: 14px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        }
+        .legend i {
+            width: 14px;
+            height: 14px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <h1>Caraguatatuba em Alerta</h1>
+    <div id="mapa"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- Inicialização do Mapa ---
+        const caragua_coords = [-23.6263, -45.4147];
+        const mapa = L.map('mapa').setView(caragua_coords, 13);
+
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(mapa);
+
+        // --- Definir ícones coloridos personalizados ---
+        const icones = {
+            'Alagamento': L.icon({
+                iconUrl: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+                popupAnchor: [0, -30]
+            }),
+            'Deslizamento': L.icon({
+                iconUrl: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+                popupAnchor: [0, -30]
+            }),
+            'Socorro': L.icon({
+                iconUrl: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+                popupAnchor: [0, -30]
+            }),
+            'Outro': L.icon({
+                iconUrl: 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+                popupAnchor: [0, -30]
+            })
+        };
+
+        // --- Adiciona legenda ao mapa ---
+        const legenda = L.control({ position: 'bottomright' });
+
+        legenda.onAdd = function () {
+            const div = L.DomUtil.create('div', 'legend');
+            div.innerHTML += '<strong>Legenda</strong><br>';
+            div.innerHTML += '<i style="background: blue"></i> Alagamento<br>';
+            div.innerHTML += '<i style="background: red"></i> Deslizamento<br>';
+            div.innerHTML += '<i style="background: green"></i> Socorro<br>';
+            div.innerHTML += '<i style="background: yellow"></i> Outro<br>';
+            return div;
+        };
+
+        legenda.addTo(mapa);
+
+        // --- Função para carregar pontos do servidor ---
+        function carregarPontos() {
+            fetch('/api/pontos_alerta')
+                .then(response => response.json())
+                .then(pontos => {
+                    pontos.forEach(ponto => {
+                        const tipo = ponto.tipo in icones ? ponto.tipo : 'Outro';
+                        L.marker([ponto.latitude, ponto.longitude], { icon: icones[tipo] })
+                            .addTo(mapa)
+                            .bindPopup(`<b>${tipo}</b><br>${ponto.descricao}`);
+                    });
+                });
+        }
+
+        carregarPontos();
+
+        // --- Adicionar novo ponto com clique ---
+        mapa.on('click', function (e) {
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+
+            const tipo = prompt("Qual o tipo de alerta? (Alagamento, Deslizamento, Socorro)");
+            const descricao = prompt("Descreva o problema:");
+
+            if (!tipo || !descricao) {
+                alert("Tipo e descrição são obrigatórios.");
+                return;
+            }
+
+            const tipoFormatado = tipo.charAt(0).toUpperCase() + tipo.slice(1).toLowerCase();
+            const tipoFinal = tipoFormatado in icones ? tipoFormatado : 'Outro';
+
+            fetch('/api/salvar_ponto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tipo: tipoFinal,
+                    descricao: descricao,
+                    latitude: lat,
+                    longitude: lon
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Ponto salvo:', data);
+                L.marker([lat, lon], { icon: icones[tipoFinal] })
+                    .addTo(mapa)
+                    .bindPopup(`<b>${tipoFinal}</b><br>${descricao}`);
+            })
+            .catch(error => {
+                console.error('Erro ao salvar ponto:', error);
+            });
+        });
+    </script>
+</body>
+</html>
